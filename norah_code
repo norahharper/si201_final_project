@@ -1,6 +1,13 @@
 # Names: Norah Harper
 
-import re
 import os
-import csv
-import unittest
+import sqlite3
+import json
+
+def read_table_from_file(filename):
+    full_path = os.path.join(os.path.dirname(__file__), filename)
+    f = open(full_path)
+    file_data = f.read()
+    f.close()
+    json_data = json.loads(file_data)
+    return json_data
