@@ -3,29 +3,30 @@ import sqlite3
 import json
 import requests
 
-params = {
+
+
+def read_data_from_file():
+    params = {
     'apikey': '77990b4c42b112a24d730bb8b8b147b1',
-    'q': 'detroit'
-}
-response = requests.get('https://hub.juheapi.com/aqi/v1/city', params=params)
-if response.status_code == 200:
-    data = response.json()
-    print(data)
-else:
-    print(f'Error: {response.status_code}')
-
-
-
-def read_data_from_file(filename):
-    full_path = os.path.join(os.path.dirname(__file__), filename)
-    f = open(full_path)
-    file_data = f.read()
-    f.close()
-    json_data = json.loads(file_data)
-    return json_data
+    'q': 'Ypsilanti'
+    }
+    response = requests.get('https://hub.juheapi.com/aqi/v1/city', params=params)
+    if response.status_code == 200:
+        data = response.json()
+        print(data)
+    else:
+        print(f'Error: {response.status_code}')
+        return
 
 def set_up_database(db_name):
     path = os.path.dirname(os.path.abspath(__file__))
     conn = sqlite3.connect(path + "/" + db_name)
     cur = conn.cursor()
     return cur, conn
+
+def main():
+    read_data_from_file()
+    set_up_database('database.db')
+
+if __name__ == "__main__":
+    main()
