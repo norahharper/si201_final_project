@@ -3,8 +3,6 @@ import sqlite3
 import json
 import requests
 
-
-
 def read_data_from_file():
     params = {
     'apikey': '77990b4c42b112a24d730bb8b8b147b1',
@@ -13,20 +11,49 @@ def read_data_from_file():
     response = requests.get('https://hub.juheapi.com/aqi/v1/city', params=params)
     if response.status_code == 200:
         data = response.json()
-        print(data)
+        return data
     else:
         print(f'Error: {response.status_code}')
         return
 
 def set_up_database(db_name):
-    path = os.path.dirname(os.path.abspath(__file__))
-    conn = sqlite3.connect(path + "/" + db_name)
-    cur = conn.cursor()
-    return cur, conn
+    conn = None
+    try:
+        conn = sqlite3.connect(db_name)
+        cursor = conn.cursor()
+        cursor.execute(f"CREATE TABLE IF NOT EXISTS aqi_data (city TEXT, aqi INTEGER)")
+        conn.commit()
+    except:
+        print(f"Error creating database or table: {sqlite3.Error}")
+    return cursor, conn
+
+def set_up_aqi_table(data, cursor, conn):
+    try:
+        if not data or "data" not in data:
+            print("API did not return usable data")
+            return
+        result = data["data"]
+        city = result.get("city")
+        aqi = result.get("aqi")
+        if aqi is not None:
+            aqi = int(aqi)
+        cursor.execute(
+            "INSERT INTO aqi_data (city, aqi) VALUES (?, ?)",
+            (city, aqi)
+        )
+
+        conn.commit()
+        print("Inserted:", city, aqi)
+    except Exception as e:
+        print("Error inserting data:", e)
+    pass
 
 def main():
-    read_data_from_file()
-    set_up_database('database.db')
+    data = read_data_from_file()
+    cursor, conn = set_up_database('database.db')
+    set_up_aqi_table(data, cursor, conn)
+    if conn:
+        conn.close()
 
 if __name__ == "__main__":
     main()
