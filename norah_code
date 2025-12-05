@@ -3,10 +3,10 @@ import sqlite3
 import json
 import requests
 
-def read_data_from_file():
+def read_data_from_file(city_name):
     params = {
     'apikey': '77990b4c42b112a24d730bb8b8b147b1',
-    'q': 'Ypsilanti'
+    'q': city_name
     }
     response = requests.get('https://hub.juheapi.com/aqi/v1/city', params=params)
     if response.status_code == 200:
@@ -21,7 +21,7 @@ def set_up_database(db_name):
     try:
         conn = sqlite3.connect(db_name)
         cursor = conn.cursor()
-        cursor.execute(f"CREATE TABLE IF NOT EXISTS aqi_data (city TEXT, aqi INTEGER)")
+        cursor.execute(f"CREATE TABLE IF NOT EXISTS aqi_data (city TEXT UNIQUE, aqi INTEGER)")
         conn.commit()
     except:
         print(f"Error creating database or table: {sqlite3.Error}")
@@ -29,7 +29,7 @@ def set_up_database(db_name):
 
 def set_up_aqi_table(data, cursor, conn):
     try:
-        if not data or "data" not in data:
+        if not data or "data" not in data or not data["data"]:
             print("API did not return usable data")
             return
         result = data["data"]
@@ -41,7 +41,6 @@ def set_up_aqi_table(data, cursor, conn):
             "INSERT INTO aqi_data (city, aqi) VALUES (?, ?)",
             (city, aqi)
         )
-
         conn.commit()
         print("Inserted:", city, aqi)
     except Exception as e:
@@ -49,9 +48,11 @@ def set_up_aqi_table(data, cursor, conn):
     pass
 
 def main():
-    data = read_data_from_file()
     cursor, conn = set_up_database('database.db')
-    set_up_aqi_table(data, cursor, conn)
+    city_list = ['Ypsilanti', 'Detroit']
+    for city_name in city_list:
+        data = read_data_from_file(city_name)
+        set_up_aqi_table(data, cursor, conn)
     if conn:
         conn.close()
 
