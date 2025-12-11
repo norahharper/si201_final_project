@@ -21,6 +21,7 @@ def set_up_database(db_name):
     try:
         conn = sqlite3.connect(db_name)
         cursor = conn.cursor()
+        cursor.execute("DROP TABLE IF EXISTS aqi_data")
         cursor.execute(f"CREATE TABLE IF NOT EXISTS aqi_data (city TEXT UNIQUE, aqi INTEGER)")
         conn.commit()
     except:
