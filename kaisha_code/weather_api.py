@@ -151,10 +151,6 @@ def store_weather_data(city_name, weather_dict, location_key, country):
     print(f"Weather data for {city_name} stored successfully!")
 
 
-
-# ------------------------------------------------------------
-# MAIN (test runner)
-# ------------------------------------------------------------
 if __name__ == "__main__":
     # Example test to insert 1 city
     city = "Ann Arbor"
