@@ -48,12 +48,72 @@ def set_up_aqi_table(data, cursor, conn):
         print("Error inserting data:", e)
     pass
 
-def main():
-    cursor, conn = set_up_database('database.db')
-    city_list = ['Ypsilanti', 'Detroit']
+def calc_avg_aqi(city_list, cursor, conn):
+    aqi = 0
+    city_count = 0
     for city_name in city_list:
         data = read_data_from_file(city_name)
         set_up_aqi_table(data, cursor, conn)
+        aqi_value = data["data"]["aqi"]
+        aqi += int(aqi_value)
+        city_count += 1
+    print(city_count)
+    avg_aqi = aqi / city_count
+    return avg_aqi
+
+def main():
+    cursor, conn = set_up_database('database.db')
+    city_list = ['Birmingham', 'New York City',
+                'Anchorage', 'Bethel, Alaska',
+                'South Phoenix', 'Los Angeles',
+                'Parr', 'San Francisco',
+                'Sacramento', 'Fresno',
+                'CAMP', 'Seattle',
+                'Hartford', 'New Haven - Criscuolo Park',
+                'San Diego', 'San Jose',
+                'Tallahassee Community College', 'Portland',
+                'United Ave.', 'Lathrop',
+                'Honolulu', 'Hilo',
+                'Boise Fire Station', 'Penford - Idaho Falls',
+                'Chi_sp', 'Peoria',
+                'Indpls - I-70 E', 'Miami',
+                'Carpenter, Des Moines', 'Atlanta',
+                'KNI-Topeka', 'Dallas',
+                'Newtwn, Kentucky', 'Houston',
+                'Baton Rouge Capitol site', 'Shreveport Downtown Airport site',
+                'Denver', 'Las Vegas',
+                'Hagerstown', 'Oldtown, Maryland',
+                'Boston', 'Tucson',
+                'Lansing', 'Grand Rapids',
+                'St. Paul-Harding H.S.', 'Duluth-WDSE',
+                'Jackson NCORE', 'Orlando',
+                'Blair Street', 'Tampa',
+                'Rossiter Pump House', 'Jacksonville',
+                'Llchd Bam', 'Lincoln',
+                'JD Smith, Clark County', 'Nashville',
+                'Keene', 'Concord, New Hampshire',
+                'Rider University', 'South Camden',
+                'South Valley', 'Memphis',
+                'East Syracuse', 'New Orleans',
+                'Millbrook NCore', 'Bded',
+                'Bismarck Residential', 'San Antonio',
+                'Erie, Ohio', 'El Paso',
+                'Near Road OKC', 'Lawton North',
+                'Pendleton', 'Albuquerque',
+                'Harrisburg', 'Altoona',
+                'Near Road, Rhode Island', 'Santa Fe',
+                'Reno', 'Carson City',
+                'Sioux Falls', 'Oakland',
+                'Lockland', 'Berkeley',
+                'Austin Northwest', 'Lubbock 12th Street',
+                'Salt Lake City', 'Palo Alto',
+                'Rutland', 'Mountain View',
+                'MSIC (MathScience Innovation Center)', 'Sunnyvale',
+                '10th and Weller', 'Fifth St, Wenatchee',
+                'Madison-east', 'Cupertino',
+                'Cheyenne NCore', 'Laramie Mobile']
+    avg_aqi = calc_avg_aqi(city_list, cursor, conn)
+    print(avg_aqi)
     if conn:
         conn.close()
 

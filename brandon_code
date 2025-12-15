@@ -3,65 +3,92 @@ import requests
 
 def read_bird_data(region_code):
     url = f"https://api.ebird.org/v2/data/obs/{region_code}/recent"
-
-    headers = {
-        "x-ebirdapitoken": "tdp5tn77nhu0"
-    }
-
+    headers = {"x-ebirdapitoken": "tdp5tn77nhu0"}
     response = requests.get(url, headers=headers)
-
     if response.status_code == 200:
         return response.json()
-    else:
-        print(f"Error: {response.status_code}")
-        return None
-
+    return None
 
 def set_up_database(db_name):
     conn = sqlite3.connect(db_name)
     cursor = conn.cursor()
 
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS bird_data (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            speciesCode TEXT,
+        CREATE TABLE IF NOT EXISTS species (
+            species_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            speciesCode TEXT UNIQUE,
             comName TEXT,
-            sciName TEXT,
+            sciName TEXT
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS observations (
+            obs_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            species_id INTEGER,
             locId TEXT,
             locName TEXT,
-            obsDt TEXT,
+            obsDt TEXT UNIQUE,
             howMany INTEGER,
             lat REAL,
             lng REAL,
             obsValid INTEGER,
             obsReviewed INTEGER,
             locationPrivate INTEGER,
-            subId TEXT
+            subId TEXT,
+            FOREIGN KEY (species_id) REFERENCES species(species_id)
         )
     """)
 
     conn.commit()
     return cursor, conn
 
+def get_species_id(cursor, speciesCode, comName, sciName):
+    cursor.execute("SELECT species_id FROM species WHERE speciesCode = ?", (speciesCode,))
+    row = cursor.fetchone()
+    if row:
+        return row[0]
+
+    cursor.execute("""
+        INSERT INTO species (speciesCode, comName, sciName)
+        VALUES (?, ?, ?)
+    """, (speciesCode, comName, sciName))
+
+    return cursor.lastrowid
+
+def observation_exists(cursor, obsDt):
+    cursor.execute("SELECT 1 FROM observations WHERE obsDt = ?", (obsDt,))
+    return cursor.fetchone() is not None
 
 def insert_bird_data(data, cursor, conn):
     if not data:
-        print("No data to insert.")
         return
 
+    inserted_count = 0
+
     for bird in data:
-        cursor.execute("""
-            INSERT INTO bird_data (
-                speciesCode, comName, sciName,
-                locId, locName, obsDt,
-                howMany, lat, lng,
-                obsValid, obsReviewed, locationPrivate, subId
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
+        if inserted_count >= 25:
+            break
+
+        if observation_exists(cursor, bird.get("obsDt")):
+            continue
+
+        species_id = get_species_id(
+            cursor,
             bird.get("speciesCode"),
             bird.get("comName"),
-            bird.get("sciName"),
+            bird.get("sciName")
+        )
+
+        cursor.execute("""
+            INSERT INTO observations (
+                species_id, locId, locName, obsDt, howMany,
+                lat, lng, obsValid, obsReviewed,
+                locationPrivate, subId
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            species_id,
             bird.get("locId"),
             bird.get("locName"),
             bird.get("obsDt"),
@@ -74,16 +101,24 @@ def insert_bird_data(data, cursor, conn):
             bird.get("subId")
         ))
 
-    conn.commit()
-    print("Inserted all bird observations!")
+        inserted_count += 1
 
+    conn.commit()
+    print(f"Inserted {inserted_count} new observations this run.")
+
+def calculate_and_save_results(cursor):
+    cursor.execute("SELECT AVG(howMany) FROM observations")
+    avg_birds = cursor.fetchone()[0]
+
+    with open("bird_analysis.txt", "w") as file:
+        file.write(f"Average number of birds for all current observations: {round(avg_birds, 2)}\n")
 
 def main():
     cursor, conn = set_up_database("database.db")
-    data = read_bird_data("US-MI")   # example region
+    data = read_bird_data("US-MI")
     insert_bird_data(data, cursor, conn)
+    calculate_and_save_results(cursor)
     conn.close()
-
 
 if __name__ == "__main__":
     main()
