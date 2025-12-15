@@ -1,11 +1,8 @@
 import requests
 import sqlite3
-
-
-DB_NAME = "database.db"
 import os
-print("DB PATH:", os.path.abspath(DB_NAME))
 
+DB_NAME = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "database.db"))
 API_KEY = "zpka_f178601ddd9f4fbc9eac72977020ad79_0b813b45"
 
 
@@ -18,10 +15,6 @@ def get_location_key(city_name):
     response = requests.get(url, params=params)
     data = response.json()
 
-    print("STATUS CODE:", response.status_code)
-    print("LOCATION RESPONSE:", data)
-
-    # If AccuWeather returns an error dict
     if isinstance(data, dict):
         print("AccuWeather error:", data)
         return None, None
@@ -51,7 +44,6 @@ def get_weather_data(location_key):
     response = requests.get(url, params=params)
     data = response.json()
 
-    print("WEATHER RESPONSE:", data)
 
     if not data:
         print("No weather data returned.")
@@ -93,7 +85,8 @@ def create_tables():
             weather_text TEXT,
             is_daytime INTEGER,
             observation_time TEXT,
-            FOREIGN KEY (location_id) REFERENCES locations(id)
+            FOREIGN KEY (location_id) REFERENCES locations(id),
+            UNIQUE (location_id, observation_time)
         )
     """)
 
@@ -104,63 +97,118 @@ def create_tables():
 # Function 3: store_weather_data
 
 def store_weather_data(city_name, weather_dict, location_key, country):
-
     create_tables()
-    
+
     conn = sqlite3.connect(DB_NAME)
     cur = conn.cursor()
-
 
     cur.execute("""
         INSERT OR IGNORE INTO locations (city_name, country, location_key)
         VALUES (?, ?, ?)
     """, (city_name, country, location_key))
-
     conn.commit()
 
     cur.execute("SELECT id FROM locations WHERE location_key = ?", (location_key,))
-    location_id = cur.fetchone()[0]
-
-   
-    cur.execute("SELECT COUNT(*) FROM weather_conditions")
-    current_count = cur.fetchone()[0]
-
-    if current_count >= 25:
-        print("Limit reached: Only storing 25 weather entries per run.")
+    row = cur.fetchone()
+    if not row:
         conn.close()
-        return
+        return False
+    location_id = row[0]
 
-    # -----------------------------
-    # 3. INSERT weather data
-    # -----------------------------
     cur.execute("""
-        INSERT INTO weather_conditions (location_id, temperature, humidity,
-                                        weather_text, is_daytime, observation_time)
+        INSERT OR IGNORE INTO weather_conditions (
+            location_id, temperature, humidity, weather_text, is_daytime, observation_time
+        )
         VALUES (?, ?, ?, ?, ?, ?)
     """, (
         location_id,
         weather_dict["temperature"],
         weather_dict["humidity"],
         weather_dict["weather_text"],
-        weather_dict["is_daytime"],
+        int(weather_dict["is_daytime"]),
         weather_dict["observation_time"]
     ))
 
     conn.commit()
+    inserted = cur.rowcount > 0
     conn.close()
-    print(f"Weather data for {city_name} stored successfully!")
 
+    if inserted:
+        print(f"Stored weather for {city_name}")
+    else:
+        print(f"Skipped duplicate weather row for {city_name}")
+
+    return inserted
+
+def get_existing_city_names():
+    create_tables()
+    conn = sqlite3.connect(DB_NAME)
+    cur = conn.cursor()
+    cur.execute("SELECT city_name FROM locations")
+    existing = {row[0] for row in cur.fetchall()}
+    conn.close()
+    return existing
+
+
+def get_next_city_batch(all_cities, batch_size=25):
+    existing = get_existing_city_names()
+    remaining = [city for city in all_cities if city not in existing]
+    return remaining[:batch_size]
 
 if __name__ == "__main__":
-    # Example test to insert 1 city
-    city = "Ann Arbor"
+    ALL_CITIES = [
+        "Ann Arbor", "Detroit", "Lansing", "Grand Rapids", "Kalamazoo", "Flint", "Saginaw", "Bay City", "Midland",
+        "Traverse City", "Marquette", "Muskegon", "Holland", "Jackson", "Monroe", "Port Huron", "Pontiac",
+        "Royal Oak", "Dearborn", "Novi", "Troy", "Livonia", "Warren", "Sterling Heights", "Bloomfield Hills",
 
-    create_tables()
+        "Chicago", "Milwaukee", "Madison", "Minneapolis", "St. Paul", "Indianapolis", "Columbus", "Cleveland",
+        "Cincinnati", "Pittsburgh", "Buffalo", "Rochester", "Syracuse", "Albany", "New York", "Newark",
+        "Philadelphia", "Baltimore", "Washington", "Richmond", "Charlotte", "Raleigh", "Atlanta", "Nashville",
+        "Louisville", "St. Louis", "Kansas City", "Omaha", "Denver", "Salt Lake City", "Phoenix", "Tucson",
+        "Las Vegas", "Los Angeles", "San Diego", "San Jose", "San Francisco", "Sacramento", "Portland", "Seattle",
+        "Spokane", "Boise", "Albuquerque", "El Paso", "Dallas", "Fort Worth", "Austin", "San Antonio", "Houston",
+        "New Orleans", "Baton Rouge", "Jacksonville", "Orlando", "Tampa", "Miami",
 
-    loc_key, country = get_location_key(city)
+        "Boston", "Providence", "Hartford", "New Haven", "Bridgeport", "Norfolk", "Virginia Beach",
+        "Charleston", "Savannah", "Birmingham", "Memphis", "Knoxville", "Chattanooga", "Little Rock",
+        "Oklahoma City", "Tulsa", "Wichita", "Des Moines", "Sioux Falls", "Fargo", "Billings", "Cheyenne",
+        "Reno", "Fresno", "Oakland", "Long Beach", "Anaheim", "Santa Ana", "Irvine", "Bakersfield", 
 
-if not loc_key:
-    print("Stopping — no location key.")
-else:
-    weather_info = get_weather_data(loc_key)
-    store_weather_data(city, weather_info, loc_key, country)
+        "San Bernardino", "Riverside", "Santa Monica", "Pasadena", "Burbank",
+        "Glendale", "Pomona", "Ontario", "Corona", "Temecula",
+        "Modesto", "Stockton", "Salinas", "Santa Cruz", "Gilroy",
+        "Redwood City", "Palo Alto", "Mountain View", "Sunnyvale", "Cupertino",
+        "Fremont", "Hayward", "Union City", "San Mateo", "Daly City",
+        "South San Francisco", "San Bruno", "Millbrae", "Burlingame", "Foster City",
+        "Menlo Park", "Los Gatos", "Campbell", "Milpitas", "Santa Clara",
+        "Redlands", "Yucaipa", "Upland", "Rancho Cucamonga", "Claremont",
+        "La Verne", "Pomona", "Monrovia", "Arcadia", "Azusa", "Covina"
+
+    ]
+
+    batch = get_next_city_batch(ALL_CITIES, batch_size=25)
+
+    if not batch:
+        print("No new cities left to insert (you may already have all cities in ALL_CITIES).")
+        raise SystemExit
+
+    successful_inserts = 0
+
+    for city in batch:
+        loc_key, country = get_location_key(city)
+        if not loc_key:
+            continue
+
+        weather_info = get_weather_data(loc_key)
+        if not weather_info:
+            continue
+
+        inserted = store_weather_data(city, weather_info, loc_key, country)
+        if inserted:
+            successful_inserts += 1
+
+        if successful_inserts >= 25:
+            break
+
+    print(f"Run complete. Inserted {successful_inserts} new weather rows this run.")
+    print("Re-run the script to insert the next batch of up to 25 cities.")

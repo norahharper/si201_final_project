@@ -1,0 +1,2 @@
+Average aqi for batch of 25 cities: 32.12
+

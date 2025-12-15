@@ -3,58 +3,178 @@ import sqlite3
 import json
 import requests
 
+
 def read_data_from_file(city_name):
     params = {
-    'apikey': '77990b4c42b112a24d730bb8b8b147b1',
-    'q': city_name
+        "apikey": "77990b4c42b112a24d730bb8b8b147b1",
+        "q": city_name
     }
-    response = requests.get('https://hub.juheapi.com/aqi/v1/city', params=params)
+    response = requests.get("https://hub.juheapi.com/aqi/v1/city", params=params)
+
     if response.status_code == 200:
         data = response.json()
         return data
-    else:
-        print(f'Error: {response.status_code}')
-        return
+
+    print(f"Error: {response.status_code}")
+    return None
+
 
 def set_up_database(db_name):
     conn = None
     try:
         conn = sqlite3.connect(db_name)
         cursor = conn.cursor()
-        cursor.execute(f"CREATE TABLE IF NOT EXISTS aqi_data (city TEXT UNIQUE, aqi INTEGER)")
+
+        # cursor.execute("SELECT COUNT(*) FROM aqi_data")
+        # current_row_count = cursor.fetchone()[0]
+        # if current_row_count > 100:
+        #     cursor.execute("DROP TABLE IF EXISTS aqi_data")
+
+        cursor.execute(
+            "CREATE TABLE IF NOT EXISTS aqi_data (city TEXT UNIQUE, aqi INTEGER)"
+        )
         conn.commit()
-    except:
-        print(f"Error creating database or table: {sqlite3.Error}")
+    except sqlite3.Error as e:
+        print(f"Error creating database or table: {e}")
+        return None, None
+
     return cursor, conn
+
 
 def set_up_aqi_table(data, cursor, conn):
     try:
         if not data or "data" not in data or not data["data"]:
             print("API did not return usable data")
             return
+
         result = data["data"]
         city = result.get("city")
         aqi = result.get("aqi")
+
         if aqi is not None:
             aqi = int(aqi)
+
         cursor.execute(
             "INSERT INTO aqi_data (city, aqi) VALUES (?, ?)",
             (city, aqi)
         )
         conn.commit()
         print("Inserted:", city, aqi)
+
     except Exception as e:
         print("Error inserting data:", e)
-    pass
 
-def main():
-    cursor, conn = set_up_database('database.db')
-    city_list = ['Ypsilanti', 'Detroit']
+
+def load_processed_cities():
+    if os.path.exists("processed_cities.json"):
+        with open("processed_cities.json", "r") as f:
+            try:
+                return set(json.load(f))
+            except json.JSONDecodeError:
+                return set()
+    return set()
+
+
+def save_processed_cities(processed_cities):
+    with open("processed_cities.json", "w") as f:
+        json.dump(list(processed_cities), f)
+
+
+def get_cities_to_process(all_cities):
+    processed = load_processed_cities()
+    unprocessed_cities = [city for city in all_cities if city not in processed]
+    cities_for_this_run = unprocessed_cities[:25]
+    return cities_for_this_run
+
+
+def calc_avg_aqi(city_list, cursor, conn):
+    aqi_total = 0
+    city_count = 0
+    successfully_processed_cities = set()
+
     for city_name in city_list:
         data = read_data_from_file(city_name)
-        set_up_aqi_table(data, cursor, conn)
-    if conn:
-        conn.close()
+
+        try:
+            set_up_aqi_table(data, cursor, conn)
+
+            if (
+                data
+                and "data" in data
+                and data["data"]
+                and data["data"].get("aqi") is not None
+            ):
+                successfully_processed_cities.add(city_name)
+
+                aqi_value = data["data"]["aqi"]
+                aqi_total += int(aqi_value)
+                city_count += 1
+
+        except Exception:
+            pass
+
+    print("Cities processed in this run:", city_count)
+
+    if city_count > 0:
+        avg_aqi = aqi_total / city_count
+    else:
+        avg_aqi = 0
+
+    return avg_aqi, successfully_processed_cities
+
+
+def main():
+    all_cities = [
+        "Jackson", "Plantation", "Providence", "Peoria", "Knoxville", "Philadelphia",
+        "San Antonio", "San Diego", "Dallas", "Jacksonville", "Austin", "Fort Worth",
+        "San Jose", "Louisville", "Charlotte", "Indianapolis", "San Francisco",
+        "Seattle", "Denver", "Oklahoma City", "Nashville", "Washington", "El Paso",
+        "Salt Lake City", "Boston", "Detroit", "Portland", "Baton Rouge", "Baltimore",
+        "Milwaukee", "Albuquerque", "Tucson", "Fresno", "Sacramento", "Mesa",
+        "Atlanta", "Kansas City", "Colorado Springs", "Omaha", "Raleigh", "Miami",
+        "Scottsdale", "Long Beach", "Oakland", "Minneapolis", "Bakersfield", "Tulsa",
+        "Tampa", "Arlington", "Wichita", "Aurora", "New Orleans", "Cleveland",
+        "Honolulu", "Paradise", "Henderson", "Orlando", "Lexington", "Stockton",
+        "Riverside", "Corpus Christi", "Houston", "Cincinnati", "Tacoma", "Newark",
+        "Saint Paul", "Pittsburgh", "Greensboro", "Durham", "Lincoln", "Shreveport",
+        "Fayetteville", "Anchorage", "Las Vegas", "St. Louis", "Madison", "Oxnard",
+        "Dayton", "Montgomery", "Buffalo", "Springfield", "Fort Wayne", "Lubbock",
+        "Toledo", "St. Petersburg", "Yonkers", "Grand Rapids", "Des Moines",
+        "Chicago", "Winston-Salem", "Rochester", "Phoenix", "Los Angeles", "Boise",
+        "Modesto", "Spokane", "New York City", "Akron", "Huntsville", "Chattanooga"
+    ]
+
+    cities_for_this_run = get_cities_to_process(all_cities)
+
+    if not cities_for_this_run:
+        print(
+            "No new cities to process. All cities have been stored or the limit has "
+            "been reached in previous runs."
+        )
+        return
+
+    print(f"Processing {len(cities_for_this_run)} cities in this run.")
+
+    cursor, conn = set_up_database("database.db")
+    if cursor is None or conn is None:
+        return
+
+    avg_aqi, newly_processed_cities = calc_avg_aqi(cities_for_this_run, cursor, conn)
+
+    all_processed = load_processed_cities()
+    all_processed.update(newly_processed_cities)
+    save_processed_cities(all_processed)
+
+    print(
+        f"Average AQI for the {len(newly_processed_cities)} cities processed in this run: {avg_aqi}"
+    )
+    print(f"Total unique cities tracked so far: {len(all_processed)}")
+
+    with open("aqi_averages.txt", "w") as file:
+        file.write(f"Average aqi for batch of 25 cities: {round(avg_aqi, 2)}\n\n")
+
+    conn.close()
+
 
 if __name__ == "__main__":
     main()
