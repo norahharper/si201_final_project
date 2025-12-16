@@ -1,0 +1,42 @@
+SI201 Final Project — Calculated Results
+Generated: 2025-12-15T22:09:50
+Database: /Users/kaishahanda/SI201/fall25-hw8-kaishahanda/si201_final_project/data/database.db
+
+WEATHER (JOIN: locations + weather_conditions) 
+Total weather observations: 117
+Overall avg temperature (C): -0.88
+Overall avg humidity: 68.74
+
+Top 10 cities by number of weather observations:
+city | country | obs_count | avg_temp_c | avg_humidity | daytime_obs
+Riverside | United States | 1 | 25.8 | 32.0 | 1
+Glendale | United States | 1 | 25.0 | 19.0 | 1
+Corona | United States | 1 | 23.4 | 47.0 | 1
+Pasadena | United States | 1 | 22.8 | 35.0 | 1
+Ontario | United States | 1 | 22.6 | 36.0 | 1
+Burbank | United States | 1 | 22.6 | 44.0 | 1
+Pomona | United States | 1 | 22.0 | 45.0 | 1
+Miami | United States | 1 | 21.5 | 83.0 | 0
+Irvine | United States | 1 | 17.6 | 73.0 | 1
+Santa Ana | United States | 1 | 17.2 | 73.0 | 1
+
+AQI
+Total AQI rows: 67
+Avg AQI: 38.75
+Min AQI: 1
+Max AQI: 78
+
+
+BIRDS
+Total bird rows: 172
+Top 10 species by sightings:
+Yellow-rumped Warbler: 1
+Yellow-bellied Sapsucker: 1
+Wood Duck: 1
+Winter Wren: 1
+Wilson's Snipe: 1
+Wild Turkey: 1
+White-winged Scoter: 1
+White-winged Crossbill: 1
+White-throated Sparrow: 1
+White-crowned Sparrow: 1
