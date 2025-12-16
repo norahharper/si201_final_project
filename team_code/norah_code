@@ -3,17 +3,20 @@ import sqlite3
 import json
 import requests
 
+AQI_API_KEY = os.getenv("AQI_API_KEY")
+if not AQI_API_KEY:
+    raise ValueError("Missing AQI_API_KEY environment variable")
+
 
 def read_data_from_file(city_name):
     params = {
-        "apikey": "77990b4c42b112a24d730bb8b8b147b1",
+        "apikey": AQI_API_KEY,
         "q": city_name
     }
     response = requests.get("https://hub.juheapi.com/aqi/v1/city", params=params)
 
     if response.status_code == 200:
-        data = response.json()
-        return data
+        return response.json()
 
     print(f"Error: {response.status_code}")
     return None

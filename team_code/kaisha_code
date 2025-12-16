@@ -5,7 +5,9 @@ import os
 DB_PATH = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "data", "database.db")
 )
-API_KEY = "zpka_f178601ddd9f4fbc9eac72977020ad79_0b813b45"
+API_KEY = os.getenv("ACCUWEATHER_API_KEY")
+if not API_KEY:
+    raise ValueError("Missing ACCUWEATHER_API_KEY environment variable")
 
 
 # Function 1: 

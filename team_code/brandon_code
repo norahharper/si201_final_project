@@ -9,8 +9,12 @@ PROJECT_ROOT = os.path.abspath(
 DATA_DIR = os.path.join(PROJECT_ROOT, "data")
 DB_PATH = os.path.join(DATA_DIR, "database.db")
 
+EBIRD_TOKEN = os.getenv("EBIRD_API_TOKEN")
+if not EBIRD_TOKEN:
+    raise ValueError("Missing EBIRD_API_TOKEN environment variable")
 
-API_KEY = "zpka_f178601ddd9f4fbc9eac72977020ad79_0b813b45"
+headers = {"x-ebirdapitoken": EBIRD_TOKEN}
+
 
 
 def ensure_data_dir():
