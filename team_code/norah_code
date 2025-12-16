@@ -3,15 +3,11 @@ import sqlite3
 import json
 import requests
 
-AQI_API_KEY = os.getenv("AQI_API_KEY")
-if not AQI_API_KEY:
-    raise ValueError("Missing AQI_API_KEY environment variable")
-
 
 def read_data_from_file(city_name):
     params = {
-        "apikey": AQI_API_KEY,
-        "q": city_name
+        "apikey": "77990b4c42b112a24d730bb8b8b147b1",
+        "q": city_name,
     }
     response = requests.get("https://hub.juheapi.com/aqi/v1/city", params=params)
 
@@ -24,18 +20,21 @@ def read_data_from_file(city_name):
 
 def set_up_database(db_name):
     conn = None
+    cursor = None
     try:
-        conn = sqlite3.connect("data/database.db")
+        conn = sqlite3.connect(db_name)
         cursor = conn.cursor()
 
-
-        cursor.execute(
-            "CREATE TABLE IF NOT EXISTS aqi_data (city TEXT UNIQUE, aqi INTEGER)"
-        )
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS aqi_data (
+                city TEXT UNIQUE,
+                aqi INTEGER
+            )
+        """)
         conn.commit()
+
     except sqlite3.Error as e:
         print(f"Error creating database or table: {e}")
-        return None, None
 
     return cursor, conn
 
@@ -53,13 +52,17 @@ def set_up_aqi_table(data, cursor, conn):
         if aqi is not None:
             aqi = int(aqi)
 
+        # IMPORTANT: avoid UNIQUE constraint crashes
         cursor.execute(
-        "INSERT OR REPLACE INTO aqi_data (city, aqi) VALUES (?, ?)",
-    (city, aqi)
-    )
-     
+            "INSERT OR IGNORE INTO aqi_data (city, aqi) VALUES (?, ?)",
+            (city, aqi),
+        )
         conn.commit()
-        print("Inserted:", city, aqi)
+
+        if cursor.rowcount > 0:
+            print("Inserted:", city, aqi)
+        else:
+            print("Skipped duplicate city:", city)
 
     except Exception as e:
         print("Error inserting data:", e)
@@ -83,12 +86,11 @@ def save_processed_cities(processed_cities):
 def get_cities_to_process(all_cities):
     processed = load_processed_cities()
     unprocessed_cities = [city for city in all_cities if city not in processed]
-    cities_for_this_run = unprocessed_cities[:25]
-    return cities_for_this_run
+    return unprocessed_cities[:25]
 
 
 def calc_avg_aqi(city_list, cursor, conn):
-    aqi_total = 0
+    total_aqi = 0
     city_count = 0
     successfully_processed_cities = set()
 
@@ -98,16 +100,11 @@ def calc_avg_aqi(city_list, cursor, conn):
         try:
             set_up_aqi_table(data, cursor, conn)
 
-            if (
-                data
-                and "data" in data
-                and data["data"]
-                and data["data"].get("aqi") is not None
-            ):
+            if data and "data" in data and data["data"] and data["data"].get("aqi") is not None:
                 successfully_processed_cities.add(city_name)
 
                 aqi_value = data["data"]["aqi"]
-                aqi_total += int(aqi_value)
+                total_aqi += int(aqi_value)
                 city_count += 1
 
         except Exception:
@@ -115,11 +112,7 @@ def calc_avg_aqi(city_list, cursor, conn):
 
     print("Cities processed in this run:", city_count)
 
-    if city_count > 0:
-        avg_aqi = aqi_total / city_count
-    else:
-        avg_aqi = 0
-
+    avg_aqi = (total_aqi / city_count) if city_count > 0 else 0
     return avg_aqi, successfully_processed_cities
 
 
@@ -130,33 +123,30 @@ def main():
         "San Jose", "Louisville", "Charlotte", "Indianapolis", "San Francisco",
         "Seattle", "Denver", "Oklahoma City", "Nashville", "Washington", "El Paso",
         "Salt Lake City", "Boston", "Detroit", "Portland", "Baton Rouge", "Baltimore",
-        "Milwaukee", "Albuquerque", "Tucson", "Fresno", "Sacramento", "Mesa",
-        "Atlanta", "Kansas City", "Colorado Springs", "Omaha", "Raleigh", "Miami",
-        "Scottsdale", "Long Beach", "Oakland", "Minneapolis", "Bakersfield", "Tulsa",
-        "Tampa", "Arlington", "Wichita", "Aurora", "New Orleans", "Cleveland",
-        "Honolulu", "Paradise", "Henderson", "Orlando", "Lexington", "Stockton",
-        "Riverside", "Corpus Christi", "Houston", "Cincinnati", "Tacoma", "Newark",
-        "Saint Paul", "Pittsburgh", "Greensboro", "Durham", "Lincoln", "Shreveport",
-        "Fayetteville", "Anchorage", "Las Vegas", "St. Louis", "Madison", "Oxnard",
-        "Dayton", "Montgomery", "Buffalo", "Springfield", "Fort Wayne", "Lubbock",
-        "Toledo", "St. Petersburg", "Yonkers", "Grand Rapids", "Des Moines",
-        "Chicago", "Winston-Salem", "Rochester", "Phoenix", "Los Angeles", "Boise",
-        "Modesto", "Spokane", "New York City", "Akron", "Huntsville", "Chattanooga"
+        "Milwaukee", "Albuquerque", "Tucson", "Fresno", "Sacramento", "Mesa", "Atlanta",
+        "Kansas City", "Colorado Springs", "Omaha", "Raleigh", "Miami", "Scottsdale",
+        "Long Beach", "Oakland", "Minneapolis", "Bakersfield", "Tulsa", "Tampa",
+        "Arlington", "Wichita", "Aurora", "New Orleans", "Cleveland", "Honolulu",
+        "Paradise", "Henderson", "Orlando", "Lexington", "Stockton", "Riverside",
+        "Corpus Christi", "Houston", "Cincinnati", "Tacoma", "Newark", "Saint Paul",
+        "Pittsburgh", "Greensboro", "Durham", "Lincoln", "Shreveport", "Fayetteville",
+        "Anchorage", "Las Vegas", "St. Louis", "Madison", "Oxnard", "Dayton",
+        "Montgomery", "Buffalo", "Springfield", "Fort Wayne", "Lubbock", "Toledo",
+        "St. Petersburg", "Yonkers", "Grand Rapids", "Des Moines", "Chicago",
+        "Winston-Salem", "Rochester", "Phoenix", "Los Angeles", "Boise", "Modesto",
+        "Spokane", "New York City", "Akron", "Huntsville", "Chattanooga"
     ]
 
     cities_for_this_run = get_cities_to_process(all_cities)
-
     if not cities_for_this_run:
-        print(
-            "No new cities to process. All cities have been stored or the limit has "
-            "been reached in previous runs."
-        )
+        print("No new cities to process. All cities have been stored or the limit has been reached in previous runs.")
         return
 
     print(f"Processing {len(cities_for_this_run)} cities in this run.")
 
     cursor, conn = set_up_database("database.db")
-    if cursor is None or conn is None:
+    if not cursor or not conn:
+        print("Database setup failed.")
         return
 
     avg_aqi, newly_processed_cities = calc_avg_aqi(cities_for_this_run, cursor, conn)
@@ -165,10 +155,11 @@ def main():
     all_processed.update(newly_processed_cities)
     save_processed_cities(all_processed)
 
-    print(
-        f"Average AQI for the {len(newly_processed_cities)} cities processed in this run: {avg_aqi}"
-    )
+    print(f"Average AQI for the {len(newly_processed_cities)} cities processed in this run: {avg_aqi}")
     print(f"Total unique cities tracked so far: {len(all_processed)}")
+
+    with open("aqi_averages.txt", "w") as file:
+        file.write(f"Average aqi for batch of 25 cities: {round(avg_aqi, 2)}\n\n")
 
     conn.close()
 

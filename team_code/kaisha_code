@@ -1,21 +1,19 @@
-import requests
-import sqlite3
 import os
+import sqlite3
+import requests
 
-DB_PATH = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "data", "database.db")
+DB_NAME = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "database.db")
 )
-API_KEY = os.getenv("ACCUWEATHER_API_KEY")
-if not API_KEY:
-    raise ValueError("Missing ACCUWEATHER_API_KEY environment variable")
+
+API_KEY = "zpka_f178601ddd9f4fbc9eac72977020ad79_0b813b45"
 
 
-# Function 1: 
+# Function 1: get location key + country
 def get_location_key(city_name):
-    api_key = API_KEY
     url = "http://dataservice.accuweather.com/locations/v1/cities/search"
+    params = {"apikey": API_KEY, "q": city_name}
 
-    params = {"apikey": api_key, "q": city_name}
     response = requests.get(url, params=params)
     data = response.json()
 
@@ -33,21 +31,16 @@ def get_location_key(city_name):
     return location_key, country
 
 
-# Function 2
-    
+# Function 2: get current weather
 def get_weather_data(location_key):
-    
-    api_key = API_KEY
     url = f"http://dataservice.accuweather.com/currentconditions/v1/{location_key}"
-
     params = {
-        "apikey": api_key,
+        "apikey": API_KEY,
         "details": "true"
     }
 
     response = requests.get(url, params=params)
     data = response.json()
-
 
     if not data:
         print("No weather data returned.")
@@ -55,26 +48,19 @@ def get_weather_data(location_key):
 
     weather_info = data[0]
 
-    weather_dict = {
+    return {
         "temperature": weather_info["Temperature"]["Metric"]["Value"],
         "humidity": weather_info.get("RelativeHumidity"),
         "weather_text": weather_info["WeatherText"],
         "is_daytime": weather_info["IsDayTime"],
-        "observation_time": weather_info["LocalObservationDateTime"]
+        "observation_time": weather_info["LocalObservationDateTime"],
     }
-
-    return weather_dict
-
-import os
-import sqlite3
 
 
 def create_tables():
-    print(DB_PATH)
-    conn = sqlite3.connect("data/database.db")
+    conn = sqlite3.connect(DB_NAME)
     cur = conn.cursor()
 
-    # locations table
     cur.execute("""
         CREATE TABLE IF NOT EXISTS locations (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -84,7 +70,6 @@ def create_tables():
         )
     """)
 
-    # weather_conditions table
     cur.execute("""
         CREATE TABLE IF NOT EXISTS weather_conditions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -103,12 +88,11 @@ def create_tables():
     conn.close()
 
 
-# Function 3: store_weather_data
-
+# Function 3: store weather data
 def store_weather_data(city_name, weather_dict, location_key, country):
     create_tables()
 
-    conn = sqlite3.connect("data/database.db")
+    conn = sqlite3.connect(DB_NAME)
     cur = conn.cursor()
 
     cur.execute("""
@@ -117,16 +101,22 @@ def store_weather_data(city_name, weather_dict, location_key, country):
     """, (city_name, country, location_key))
     conn.commit()
 
-    cur.execute("SELECT id FROM locations WHERE location_key = ?", (location_key,))
+    cur.execute(
+        "SELECT id FROM locations WHERE location_key = ?",
+        (location_key,)
+    )
     row = cur.fetchone()
+
     if not row:
         conn.close()
         return False
+
     location_id = row[0]
 
     cur.execute("""
         INSERT OR IGNORE INTO weather_conditions (
-            location_id, temperature, humidity, weather_text, is_daytime, observation_time
+            location_id, temperature, humidity,
+            weather_text, is_daytime, observation_time
         )
         VALUES (?, ?, ?, ?, ?, ?)
     """, (
@@ -149,9 +139,10 @@ def store_weather_data(city_name, weather_dict, location_key, country):
 
     return inserted
 
+
 def get_existing_city_names():
     create_tables()
-    conn = sqlite3.connect("data/database.db")
+    conn = sqlite3.connect(DB_NAME)
     cur = conn.cursor()
     cur.execute("SELECT city_name FROM locations")
     existing = {row[0] for row in cur.fetchall()}
@@ -164,41 +155,50 @@ def get_next_city_batch(all_cities, batch_size=25):
     remaining = [city for city in all_cities if city not in existing]
     return remaining[:batch_size]
 
+
 if __name__ == "__main__":
     ALL_CITIES = [
-        "Ann Arbor", "Detroit", "Lansing", "Grand Rapids", "Kalamazoo", "Flint", "Saginaw", "Bay City", "Midland",
-        "Traverse City", "Marquette", "Muskegon", "Holland", "Jackson", "Monroe", "Port Huron", "Pontiac",
-        "Royal Oak", "Dearborn", "Novi", "Troy", "Livonia", "Warren", "Sterling Heights", "Bloomfield Hills",
+        "Ann Arbor", "Detroit", "Lansing", "Grand Rapids", "Kalamazoo",
+        "Flint", "Saginaw", "Bay City", "Midland", "Traverse City",
+        "Marquette", "Muskegon", "Holland", "Jackson", "Monroe",
+        "Port Huron", "Pontiac", "Royal Oak", "Dearborn", "Novi",
+        "Troy", "Livonia", "Warren", "Sterling Heights", "Bloomfield Hills",
 
-        "Chicago", "Milwaukee", "Madison", "Minneapolis", "St. Paul", "Indianapolis", "Columbus", "Cleveland",
-        "Cincinnati", "Pittsburgh", "Buffalo", "Rochester", "Syracuse", "Albany", "New York", "Newark",
-        "Philadelphia", "Baltimore", "Washington", "Richmond", "Charlotte", "Raleigh", "Atlanta", "Nashville",
-        "Louisville", "St. Louis", "Kansas City", "Omaha", "Denver", "Salt Lake City", "Phoenix", "Tucson",
-        "Las Vegas", "Los Angeles", "San Diego", "San Jose", "San Francisco", "Sacramento", "Portland", "Seattle",
-        "Spokane", "Boise", "Albuquerque", "El Paso", "Dallas", "Fort Worth", "Austin", "San Antonio", "Houston",
-        "New Orleans", "Baton Rouge", "Jacksonville", "Orlando", "Tampa", "Miami",
+        "Chicago", "Milwaukee", "Madison", "Minneapolis", "St. Paul",
+        "Indianapolis", "Columbus", "Cleveland", "Cincinnati", "Pittsburgh",
+        "Buffalo", "Rochester", "Syracuse", "Albany", "New York", "Newark",
+        "Philadelphia", "Baltimore", "Washington", "Richmond", "Charlotte",
+        "Raleigh", "Atlanta", "Nashville", "Louisville", "St. Louis",
+        "Kansas City", "Omaha", "Denver", "Salt Lake City", "Phoenix",
+        "Tucson", "Las Vegas", "Los Angeles", "San Diego", "San Jose",
+        "San Francisco", "Sacramento", "Portland", "Seattle", "Spokane",
+        "Boise", "Albuquerque", "El Paso", "Dallas", "Fort Worth",
+        "Austin", "San Antonio", "Houston", "New Orleans", "Baton Rouge",
+        "Jacksonville", "Orlando", "Tampa", "Miami",
 
-        "Boston", "Providence", "Hartford", "New Haven", "Bridgeport", "Norfolk", "Virginia Beach",
-        "Charleston", "Savannah", "Birmingham", "Memphis", "Knoxville", "Chattanooga", "Little Rock",
-        "Oklahoma City", "Tulsa", "Wichita", "Des Moines", "Sioux Falls", "Fargo", "Billings", "Cheyenne",
-        "Reno", "Fresno", "Oakland", "Long Beach", "Anaheim", "Santa Ana", "Irvine", "Bakersfield", 
+        "Boston", "Providence", "Hartford", "New Haven", "Bridgeport",
+        "Norfolk", "Virginia Beach", "Charleston", "Savannah", "Birmingham",
+        "Memphis", "Knoxville", "Chattanooga", "Little Rock",
+        "Oklahoma City", "Tulsa", "Wichita", "Des Moines", "Sioux Falls",
+        "Fargo", "Billings", "Cheyenne", "Reno", "Fresno", "Oakland",
+        "Long Beach", "Anaheim", "Santa Ana", "Irvine", "Bakersfield",
 
         "San Bernardino", "Riverside", "Santa Monica", "Pasadena", "Burbank",
-        "Glendale", "Pomona", "Ontario", "Corona", "Temecula",
-        "Modesto", "Stockton", "Salinas", "Santa Cruz", "Gilroy",
-        "Redwood City", "Palo Alto", "Mountain View", "Sunnyvale", "Cupertino",
-        "Fremont", "Hayward", "Union City", "San Mateo", "Daly City",
-        "South San Francisco", "San Bruno", "Millbrae", "Burlingame", "Foster City",
-        "Menlo Park", "Los Gatos", "Campbell", "Milpitas", "Santa Clara",
-        "Redlands", "Yucaipa", "Upland", "Rancho Cucamonga", "Claremont",
-        "La Verne", "Pomona", "Monrovia", "Arcadia", "Azusa", "Covina"
-
+        "Glendale", "Pomona", "Ontario", "Corona", "Temecula", "Modesto",
+        "Stockton", "Salinas", "Santa Cruz", "Gilroy", "Redwood City",
+        "Palo Alto", "Mountain View", "Sunnyvale", "Cupertino", "Fremont",
+        "Hayward", "Union City", "San Mateo", "Daly City",
+        "South San Francisco", "San Bruno", "Millbrae", "Burlingame",
+        "Foster City", "Menlo Park", "Los Gatos", "Campbell", "Milpitas",
+        "Santa Clara", "Redlands", "Yucaipa", "Upland",
+        "Rancho Cucamonga", "Claremont", "La Verne", "Monrovia",
+        "Arcadia", "Azusa", "Covina"
     ]
 
     batch = get_next_city_batch(ALL_CITIES, batch_size=25)
 
     if not batch:
-        print("No new cities left to insert (you may already have all cities in ALL_CITIES).")
+        print("No new cities left to insert.")
         raise SystemExit
 
     successful_inserts = 0
@@ -212,8 +212,7 @@ if __name__ == "__main__":
         if not weather_info:
             continue
 
-        inserted = store_weather_data(city, weather_info, loc_key, country)
-        if inserted:
+        if store_weather_data(city, weather_info, loc_key, country):
             successful_inserts += 1
 
         if successful_inserts >= 25:

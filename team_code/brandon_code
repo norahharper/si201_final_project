@@ -1,220 +1,144 @@
-import os
 import sqlite3
 import requests
 
-# --- ONE consistent DB path (project_root/data/database.db) ---
-PROJECT_ROOT = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "..")
-)
-DATA_DIR = os.path.join(PROJECT_ROOT, "data")
-DB_PATH = os.path.join(DATA_DIR, "database.db")
 
-EBIRD_TOKEN = os.getenv("EBIRD_API_TOKEN")
-if not EBIRD_TOKEN:
-    raise ValueError("Missing EBIRD_API_TOKEN environment variable")
+def read_bird_data(region_code):
+    url = f"https://api.ebird.org/v2/data/obs/{region_code}/recent"
+    headers = {"x-ebirdapitoken": "tdp5tn77nhu0"}
+    response = requests.get(url, headers=headers)
 
-headers = {"x-ebirdapitoken": EBIRD_TOKEN}
+    if response.status_code == 200:
+        return response.json()
+
+    return None
 
 
+def set_up_database(db_name):
+    conn = sqlite3.connect(db_name)
+    cursor = conn.cursor()
 
-def ensure_data_dir():
-    """Make sure /data exists so SQLite can create/open the DB there."""
-    os.makedirs(DATA_DIR, exist_ok=True)
-
-
-# Function 1
-def get_location_key(city_name):
-    url = "http://dataservice.accuweather.com/locations/v1/cities/search"
-    params = {"apikey": API_KEY, "q": city_name}
-    response = requests.get(url, params=params)
-    data = response.json()
-
-    # AccuWeather sometimes returns dict with an error message
-    if isinstance(data, dict):
-        print("AccuWeather error:", data)
-        return None, None
-
-    if not data:
-        print("No location found for:", city_name)
-        return None, None
-
-    location_key = data[0]["Key"]
-    country = data[0]["Country"]["LocalizedName"]
-    return location_key, country
-
-
-# Function 2
-def get_weather_data(location_key):
-    url = f"http://dataservice.accuweather.com/currentconditions/v1/{location_key}"
-    params = {"apikey": API_KEY, "details": "true"}
-    response = requests.get(url, params=params)
-    data = response.json()
-
-    if not data:
-        print("No weather data returned.")
-        return None
-
-    weather_info = data[0]
-    weather_dict = {
-        "temperature": weather_info["Temperature"]["Metric"]["Value"],
-        "humidity": weather_info.get("RelativeHumidity"),
-        "weather_text": weather_info["WeatherText"],
-        "is_daytime": weather_info["IsDayTime"],
-        "observation_time": weather_info["LocalObservationDateTime"],
-    }
-    return weather_dict
-
-
-def create_tables():
-    ensure_data_dir()
-    conn = sqlite3.connect("data/database.db")
-    cur = conn.cursor()
-
-    # locations table
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS locations (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            city_name TEXT UNIQUE,
-            country TEXT,
-            location_key TEXT UNIQUE
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS species (
+            species_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            speciesCode TEXT UNIQUE,
+            comName TEXT,
+            sciName TEXT
         )
     """)
 
-    # weather_conditions table
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS weather_conditions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            location_id INTEGER,
-            temperature REAL,
-            humidity REAL,
-            weather_text TEXT,
-            is_daytime INTEGER,
-            observation_time TEXT,
-            FOREIGN KEY (location_id) REFERENCES locations(id),
-            UNIQUE (location_id, observation_time)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS observations (
+            obs_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            species_id INTEGER,
+            locId TEXT,
+            locName TEXT,
+            obsDt TEXT UNIQUE,
+            howMany INTEGER,
+            lat REAL,
+            lng REAL,
+            obsValid INTEGER,
+            obsReviewed INTEGER,
+            locationPrivate INTEGER,
+            subId TEXT,
+            FOREIGN KEY (species_id) REFERENCES species(species_id)
         )
     """)
 
     conn.commit()
-    conn.close()
+    return cursor, conn
 
 
-# Function 3
-def store_weather_data(city_name, weather_dict, location_key, country):
-    create_tables()
+def get_species_id(cursor, speciesCode, comName, sciName):
+    cursor.execute(
+        "SELECT species_id FROM species WHERE speciesCode = ?",
+        (speciesCode,)
+    )
+    row = cursor.fetchone()
 
-    conn = sqlite3.connect("data/database.db")
-    cur = conn.cursor()
+    if row:
+        return row[0]
 
-    cur.execute("""
-        INSERT OR IGNORE INTO locations (city_name, country, location_key)
+    cursor.execute("""
+        INSERT INTO species (speciesCode, comName, sciName)
         VALUES (?, ?, ?)
-    """, (city_name, country, location_key))
-    conn.commit()
+    """, (speciesCode, comName, sciName))
 
-    cur.execute("SELECT id FROM locations WHERE location_key = ?", (location_key,))
-    row = cur.fetchone()
-    if not row:
-        conn.close()
-        return False
-    location_id = row[0]
+    return cursor.lastrowid
 
-    cur.execute("""
-        INSERT OR IGNORE INTO weather_conditions (
-            location_id, temperature, humidity, weather_text, is_daytime, observation_time
+
+def observation_exists(cursor, obsDt):
+    cursor.execute(
+        "SELECT 1 FROM observations WHERE obsDt = ?",
+        (obsDt,)
+    )
+    return cursor.fetchone() is not None
+
+
+def insert_bird_data(data, cursor, conn):
+    if not data:
+        return
+
+    inserted_count = 0
+
+    for bird in data:
+        if inserted_count >= 25:
+            break
+
+        if observation_exists(cursor, bird.get("obsDt")):
+            continue
+
+        species_id = get_species_id(
+            cursor,
+            bird.get("speciesCode"),
+            bird.get("comName"),
+            bird.get("sciName")
         )
-        VALUES (?, ?, ?, ?, ?, ?)
-    """, (
-        location_id,
-        weather_dict["temperature"],
-        weather_dict["humidity"],
-        weather_dict["weather_text"],
-        int(weather_dict["is_daytime"]),
-        weather_dict["observation_time"]
-    ))
+
+        cursor.execute("""
+            INSERT INTO observations (
+                species_id, locId, locName, obsDt, howMany,
+                lat, lng, obsValid, obsReviewed,
+                locationPrivate, subId
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            species_id,
+            bird.get("locId"),
+            bird.get("locName"),
+            bird.get("obsDt"),
+            bird.get("howMany"),
+            bird.get("lat"),
+            bird.get("lng"),
+            bird.get("obsValid"),
+            bird.get("obsReviewed"),
+            bird.get("locationPrivate"),
+            bird.get("subId")
+        ))
+
+        inserted_count += 1
 
     conn.commit()
-    inserted = cur.rowcount > 0
+    print(f"Inserted {inserted_count} new observations this run.")
+
+
+def calculate_avg_birds(cursor):
+    cursor.execute("SELECT AVG(howMany) FROM observations")
+    avg_birds = cursor.fetchone()[0]
+
+    with open("bird_analysis.txt", "w") as file:
+        file.write(
+            f"Average number of birds for all current observations: "
+            f"{round(avg_birds, 0)}\n"
+        )
+
+
+def main():
+    cursor, conn = set_up_database("database.db")
+    data = read_bird_data("US-MI")
+    insert_bird_data(data, cursor, conn)
+    calculate_avg_birds(cursor)
     conn.close()
-
-    if inserted:
-        print(f"Stored weather for {city_name}")
-    else:
-        print(f"Skipped duplicate weather row for {city_name}")
-
-    return inserted
-
-
-def get_existing_city_names():
-    create_tables()
-    conn = sqlite3.connect("data/database.db")
-    cur = conn.cursor()
-    cur.execute("SELECT city_name FROM locations")
-    existing = {row[0] for row in cur.fetchall()}
-    conn.close()
-    return existing
-
-
-def get_next_city_batch(all_cities, batch_size=25):
-    existing = get_existing_city_names()
-    remaining = [city for city in all_cities if city not in existing]
-    return remaining[:batch_size]
 
 
 if __name__ == "__main__":
-    print("Using DB:", DB_PATH)
-
-    ALL_CITIES = [
-        "Ann Arbor", "Detroit", "Lansing", "Grand Rapids", "Kalamazoo", "Flint", "Saginaw", "Bay City", "Midland",
-        "Traverse City", "Marquette", "Muskegon", "Holland", "Jackson", "Monroe", "Port Huron", "Pontiac",
-        "Royal Oak", "Dearborn", "Novi", "Troy", "Livonia", "Warren", "Sterling Heights", "Bloomfield Hills",
-
-        "Chicago", "Milwaukee", "Madison", "Minneapolis", "St. Paul", "Indianapolis", "Columbus", "Cleveland",
-        "Cincinnati", "Pittsburgh", "Buffalo", "Rochester", "Syracuse", "Albany", "New York", "Newark",
-        "Philadelphia", "Baltimore", "Washington", "Richmond", "Charlotte", "Raleigh", "Atlanta", "Nashville",
-        "Louisville", "St. Louis", "Kansas City", "Omaha", "Denver", "Salt Lake City", "Phoenix", "Tucson",
-        "Las Vegas", "Los Angeles", "San Diego", "San Jose", "San Francisco", "Sacramento", "Portland", "Seattle",
-        "Spokane", "Boise", "Albuquerque", "El Paso", "Dallas", "Fort Worth", "Austin", "San Antonio", "Houston",
-        "New Orleans", "Baton Rouge", "Jacksonville", "Orlando", "Tampa", "Miami",
-
-        "Boston", "Providence", "Hartford", "New Haven", "Bridgeport", "Norfolk", "Virginia Beach",
-        "Charleston", "Savannah", "Birmingham", "Memphis", "Knoxville", "Chattanooga", "Little Rock",
-        "Oklahoma City", "Tulsa", "Wichita", "Des Moines", "Sioux Falls", "Fargo", "Billings", "Cheyenne",
-        "Reno", "Fresno", "Oakland", "Long Beach", "Anaheim", "Santa Ana", "Irvine", "Bakersfield",
-        "San Bernardino", "Riverside", "Santa Monica", "Pasadena", "Burbank",
-        "Glendale", "Pomona", "Ontario", "Corona", "Temecula",
-        "Modesto", "Stockton", "Salinas", "Santa Cruz", "Gilroy",
-        "Redwood City", "Palo Alto", "Mountain View", "Sunnyvale", "Cupertino",
-        "Fremont", "Hayward", "Union City", "San Mateo", "Daly City",
-        "South San Francisco", "San Bruno", "Millbrae", "Burlingame", "Foster City",
-        "Menlo Park", "Los Gatos", "Campbell", "Milpitas", "Santa Clara",
-        "Redlands", "Yucaipa", "Upland", "Rancho Cucamonga", "Claremont",
-        "La Verne", "Pomona", "Monrovia", "Arcadia", "Azusa", "Covina"
-    ]
-
-    batch = get_next_city_batch(ALL_CITIES, batch_size=25)
-
-    if not batch:
-        print("No new cities left to insert (you may already have all cities in ALL_CITIES).")
-        raise SystemExit
-
-    successful_inserts = 0
-
-    for city in batch:
-        loc_key, country = get_location_key(city)
-        if not loc_key:
-            continue
-
-        weather_info = get_weather_data(loc_key)
-        if not weather_info:
-            continue
-
-        inserted = store_weather_data(city, weather_info, loc_key, country)
-        if inserted:
-            successful_inserts += 1
-
-        if successful_inserts >= 25:
-            break
-
-    print(f"Run complete. Inserted {successful_inserts} new weather rows this run.")
-    print("Re-run the script to insert the next batch of up to 25 cities.")
+    main()
