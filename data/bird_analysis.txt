@@ -1,1 +1,1 @@
-Average number of birds for all current observations: 14.0
+Average number of birds for all current observations: 19.56
