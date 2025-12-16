@@ -2,11 +2,14 @@ import sqlite3
 import os
 from datetime import datetime
 
-DB_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "database.db"))
+DB_PATH = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "data", "database.db")
+)
+
 OUTFILE = "calculated_results.txt"
 
 def get_connection():
-    return sqlite3.connect(DB_PATH)
+    return sqlite3.connect("data/database.db")
 
 
 def calc_weather_summary():
@@ -51,7 +54,6 @@ def calc_aqi_summary():
     conn = get_connection()
     cur = conn.cursor()
 
-    # Try to compute a simple AQI summary
     cur.execute("""
         SELECT
             COUNT(*) AS total_rows,

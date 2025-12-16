@@ -2,7 +2,9 @@ import requests
 import sqlite3
 import os
 
-DB_NAME = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "database.db"))
+DB_PATH = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "data", "database.db")
+)
 API_KEY = "zpka_f178601ddd9f4fbc9eac72977020ad79_0b813b45"
 
 
@@ -61,8 +63,13 @@ def get_weather_data(location_key):
 
     return weather_dict
 
+import os
+import sqlite3
+
+
 def create_tables():
-    conn = sqlite3.connect(DB_NAME)
+    print(DB_PATH)
+    conn = sqlite3.connect("data/database.db")
     cur = conn.cursor()
 
     # locations table
@@ -99,7 +106,7 @@ def create_tables():
 def store_weather_data(city_name, weather_dict, location_key, country):
     create_tables()
 
-    conn = sqlite3.connect(DB_NAME)
+    conn = sqlite3.connect("data/database.db")
     cur = conn.cursor()
 
     cur.execute("""
@@ -142,7 +149,7 @@ def store_weather_data(city_name, weather_dict, location_key, country):
 
 def get_existing_city_names():
     create_tables()
-    conn = sqlite3.connect(DB_NAME)
+    conn = sqlite3.connect("data/database.db")
     cur = conn.cursor()
     cur.execute("SELECT city_name FROM locations")
     existing = {row[0] for row in cur.fetchall()}

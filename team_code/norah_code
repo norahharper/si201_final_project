@@ -22,13 +22,9 @@ def read_data_from_file(city_name):
 def set_up_database(db_name):
     conn = None
     try:
-        conn = sqlite3.connect(db_name)
+        conn = sqlite3.connect("data/database.db")
         cursor = conn.cursor()
 
-        # cursor.execute("SELECT COUNT(*) FROM aqi_data")
-        # current_row_count = cursor.fetchone()[0]
-        # if current_row_count > 100:
-        #     cursor.execute("DROP TABLE IF EXISTS aqi_data")
 
         cursor.execute(
             "CREATE TABLE IF NOT EXISTS aqi_data (city TEXT UNIQUE, aqi INTEGER)"
@@ -55,9 +51,10 @@ def set_up_aqi_table(data, cursor, conn):
             aqi = int(aqi)
 
         cursor.execute(
-            "INSERT INTO aqi_data (city, aqi) VALUES (?, ?)",
-            (city, aqi)
-        )
+        "INSERT OR REPLACE INTO aqi_data (city, aqi) VALUES (?, ?)",
+    (city, aqi)
+    )
+     
         conn.commit()
         print("Inserted:", city, aqi)
 
@@ -169,9 +166,6 @@ def main():
         f"Average AQI for the {len(newly_processed_cities)} cities processed in this run: {avg_aqi}"
     )
     print(f"Total unique cities tracked so far: {len(all_processed)}")
-
-    with open("aqi_averages.txt", "w") as file:
-        file.write(f"Average aqi for batch of 25 cities: {round(avg_aqi, 2)}\n\n")
 
     conn.close()
 

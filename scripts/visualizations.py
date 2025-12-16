@@ -3,13 +3,11 @@ import sqlite3
 import pandas as pd
 import plotly.express as px
 
-DB_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "database.db"))
+DB_PATH = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "data", "database.db")
+)
 
-
-# -------------------------
-# Kaisha: WEATHER visual (JOIN)
-# tables: locations + weather_conditions
-# -------------------------
+# JOIN
 def plot_weather_avg_temp(limit=15):
     conn = sqlite3.connect(DB_PATH)
 
@@ -43,10 +41,8 @@ def plot_weather_avg_temp(limit=15):
     print("Saved: weather_avg_temp.html")
 
 
-# -------------------------
 # Norah: AQI visual
-# table: aqi_data(city, aqi)
-# -------------------------
+
 def plot_aqi_top(limit=15):
     conn = sqlite3.connect(DB_PATH)
 
@@ -77,10 +73,8 @@ def plot_aqi_top(limit=15):
     print("Saved: aqi_top.html")
 
 
-# -------------------------
 # Brandon: BIRDS visual (JOIN)
-# tables: observations + species
-# -------------------------
+
 def plot_top_species_by_observations(limit=15):
     conn = sqlite3.connect(DB_PATH)
 
